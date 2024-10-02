@@ -93,6 +93,25 @@ def collect_vpc_resources(vpc_id):
             'Status': vpc_peering['Status']['Code']
         })
 
+    # Get VPC Endpoints
+    vpc_endpoints = ec2_client.describe_vpc_endpoints(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+    for endpoint in vpc_endpoints['VpcEndpoints']:
+        resources.append({
+            'ResourceType': 'VPCEndpoint',
+            'ResourceId': endpoint['VpcEndpointId'],
+            'ServiceName': endpoint['ServiceName'],
+            'State': endpoint['State']
+        })
+
+    # Get Network ACLs (NACLs)
+    network_acls = ec2_client.describe_network_acls(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+    for acl in network_acls['NetworkAcls']:
+        resources.append({
+            'ResourceType': 'NetworkACL',
+            'ResourceId': acl['NetworkAclId'],
+            'IsDefault': acl['IsDefault']
+        })
+
     # Get RDS instances
     rds_instances = rds_client.describe_db_instances()
     for db_instance in rds_instances['DBInstances']:
