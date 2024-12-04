@@ -10,7 +10,9 @@ jq -r '.[] | [
     .Size,
     (.Iops // 0),
     (.Throughput // 0),
+    (try (.Attachments[0].InstanceId) // "N/A"),
+    (try (.Attachments[0].Device) // "N/A"),
     (try (.Tags[] | select(.Key == "Name") | .Value) // "N/A")
 ] | @csv' >> $OUTPUT_FILE
 
-echo "Volume details with the Name tag have been exported to $OUTPUT_FILE."
+echo "Volume details with Name tag, attachment device, and instance ID have been exported to $OUTPUT_FILE."
