@@ -1,51 +1,59 @@
 #!/bin/bash
 
-# Variables
-SOURCE_DIR="/path/to/ebs/volume"  # Replace with your EBS volume mount path
-DEST_DIR="/path/to/fsx/mount"     # Replace with your FSx mount path
-LOG_FILE="/var/log/ebs_to_fsx.log"
-METRICS_INTERVAL=10               # Interval to log server metrics (seconds)
+# Check if the correct number of arguments is provided
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <source> <destination>"
+  exit 1
+fi
 
-# Function to log server metrics
-log_metrics() {
-    echo "=== Server Metrics at $(date) ===" >> "$LOG_FILE"
-    echo "CPU Usage:" >> "$LOG_FILE"
-    top -b -n1 | grep "Cpu(s)" | awk '{print $2 + $4"%"}' >> "$LOG_FILE"
-    echo "Memory Usage:" >> "$LOG_FILE"
-    free -h >> "$LOG_FILE"
-    echo "Disk Usage:" >> "$LOG_FILE"
-    df -h >> "$LOG_FILE"
-    echo "==================================" >> "$LOG_FILE"
-}
+# Get source and destination from script arguments
+SOURCE="$1"
+DESTINATION="$2"
 
-# Function to monitor rsync progress
-monitor_rsync() {
-    echo "Starting rsync from $SOURCE_DIR to $DEST_DIR at $(date)" >> "$LOG_FILE"
-    rsync -avh --progress "$SOURCE_DIR" "$DEST_DIR" | while IFS= read -r line; do
-        echo "$(date): $line" >> "$LOG_FILE"
-    done
-    if [[ $? -eq 0 ]]; then
-        echo "rsync completed successfully at $(date)" >> "$LOG_FILE"
-    else
-        echo "rsync encountered an error at $(date)" >> "$LOG_FILE"
-    fi
-}
+# Log file location
+LOGFILE="rsync_progress.log"
+PROGRESS_LOG="rsync_progress_temp.log"
 
-# Function to run server metrics logging in the background
-start_metrics_logging() {
-    while true; do
-        log_metrics
-        sleep "$METRICS_INTERVAL"
-    done
-}
+# Record start time
+START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+START_EPOCH=$(date +%s)
 
-# Run metrics logging in the background
-start_metrics_logging &
+# Print start time to log
+echo "----------------------------------------" >> "$LOGFILE"
+echo "Rsync started at: $START_TIME" >> "$LOGFILE"
+echo "Source: $SOURCE" >> "$LOGFILE"
+echo "Destination: $DESTINATION" >> "$LOGFILE"
 
-# Start rsync and monitor progress
-monitor_rsync
+# Start rsync in the background, redirecting its progress output to a temporary file
+rsync -avh --info=progress2 "$SOURCE" "$DESTINATION" > "$PROGRESS_LOG" 2>&1 &
+RSYNC_PID=$!
 
-# Kill background metrics logging when rsync is done
-pkill -P $$
+# Periodically log progress every 5 minutes
+while kill -0 "$RSYNC_PID" 2> /dev/null; do
+  echo "Progress at $(date +"%Y-%m-%d %H:%M:%S"):" >> "$LOGFILE"
+  tail -n 1 "$PROGRESS_LOG" >> "$LOGFILE"
+  echo "----------------------------------------" >> "$LOGFILE"
+  sleep 300  # Wait 5 minutes
+done
 
-echo "Script completed at $(date)" >> "$LOG_FILE"
+# Wait for rsync to complete
+wait "$RSYNC_PID"
+
+# Record end time
+END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+END_EPOCH=$(date +%s)
+
+# Calculate elapsed time
+ELAPSED_SECONDS=$((END_EPOCH - START_EPOCH))
+ELAPSED=$(printf "%02d:%02d:%02d" $((ELAPSED_SECONDS / 3600)) $(( (ELAPSED_SECONDS / 60) % 60 )) $((ELAPSED_SECONDS % 60)))
+
+# Print end time and elapsed time to log
+echo "Rsync completed at: $END_TIME" >> "$LOGFILE"
+echo "Time elapsed: $ELAPSED" >> "$LOGFILE"
+echo "----------------------------------------" >> "$LOGFILE"
+
+# Clean up temporary progress log
+rm -f "$PROGRESS_LOG"
+
+# Inform the user where the log is saved
+echo "Rsync completed. See log in $LOGFILE."
