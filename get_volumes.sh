@@ -10,7 +10,7 @@ jq -r '.[] | [
     .Size,
     (.Iops // 0),
     (.Throughput // 0),
-    (.Tags[]? | .Key) as $key | .Tags[]? | "\($key)=\(.Value)" | join(" ")
+    (try (.Tags[] | select(.Key == "Name") | .Value) // "N/A")
 ] | @csv' >> $OUTPUT_FILE
 
-echo "Volume details have been exported to $OUTPUT_FILE."
+echo "Volume details with the Name tag have been exported to $OUTPUT_FILE."
